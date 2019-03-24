@@ -1,0 +1,75 @@
+import requests
+from urllib.parse import urlencode
+import os
+from hashlib import md5
+import time
+import re
+
+def get_page(offset):
+	t = time.time()
+	timestamp = int(round(t * 1000))
+	params = {
+		'aid': '24',
+		'app_name':'web_search',
+		'offset': offset,
+		'format': 'json',
+		'keyword': '街拍',
+		'autoload': 'true',
+		'count': '20',
+		'en_qc':'1',
+		'cur_tab': '1',
+		'from': 'search_tab',
+		'pd': 'synthesis',
+		'timestamp':timestamp
+	}
+	url = 'https://www.toutiao.com/api/search/content/?' + urlencode(params)
+	try:
+		response = requests.get(url)
+		if response.status_code == 200:
+			return response.json()
+	except requests.ConnectionError:
+		print('*******ConnectionError***************')
+		return None
+
+def get_images(json):
+	if json.get('data'):
+		for item in json.get('data'):
+			if item.get('title'):
+				title = item.get('title')
+				images = item.get('image_list')
+				for image in images:
+					if image.get('url'):
+						temp = image.get('url')
+						print(temp)
+						result = re.match('^http.*/(.*?)$',temp)
+						image = 'http://p3.pstatp.com/large/pgc-image/' + result.group(1)
+						yield{
+							'image':image,
+							'title':title
+						}
+
+def save_image(item):#获取的地址有些是视频
+	for index,item in enumerate(item):
+		#rerere = re.match('^(.*?)\W.*$',item.get('title'))
+		folder = re.sub('\W+','',item.get('title'))
+		if not os.path.exists(folder):
+			#rerere = re.match('^(.*?)\W.*$',item.get('title'))
+			os.mkdir(folder)#OSError: [WinError 123] 文件名、目录名或卷标语法不正确。: '北京婚纱摄影|适合拍街拍婚纱照的场地推荐'
+		try:
+			response = requests.get(item.get('image'))
+			if response.status_code == 200:
+				file_path = '{0}/{1}.{2}'.format(folder,md5(response.content).hexdigest(),'jpg')
+				if not os.path.exists(file_path):
+					#rerere2 = re.sub('\W+','',file_path)
+					with open(file_path,'wb') as f:#OSError: [Errno 22] Invalid argument: '北京婚纱摄影|适合拍街拍婚纱照的场地推荐/fdd6d0dfcb77439ad50c79e123319b0a.jpg'
+						f.write(response.content)
+				else:
+					print('Already Downloaded',file_path)
+		except requests.ConnectionError:
+			print('Failed to Save Image')
+
+offsets=[0,20,40,60]
+for offset in offsets:
+	json = get_page(offset)
+	item = get_images(json)
+	save_image(item)
